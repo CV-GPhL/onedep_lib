@@ -267,6 +267,8 @@ See [`examples/em_deposition.py`](examples/em_deposition.py) for a complete walk
 
 Sessions are identified by a UUID printed at creation time. Pass it to `deposit_resume()` to reload the full session state — registered files and remote deposition ID included.
 
+When a deposition is assigned to a non-default OneDep site, the local session stores both `site_base_url` and `site_url`. `site_base_url` is the canonical site root used for later API calls and host-scoped token lookup. `site_url` is the server-provided view URL and is treated as opaque display metadata.
+
 ```python
 dep = dsp.deposit_resume("your-session-uuid")
 
