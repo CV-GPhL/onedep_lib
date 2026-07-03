@@ -57,6 +57,7 @@ class JsonSessionStore:
             "experiment_type": session.experiment_type.value if session.experiment_type else None,
             "created_at": session.created_at.isoformat(),
             "remote_dep_id": session.remote_dep_id,
+            "site_base_url": session.site_base_url,
             "site_url": session.site_url,
             "em_subtype": session.em_subtype.value if session.em_subtype else None,
             "coordinates": session.coordinates,
@@ -75,6 +76,7 @@ class JsonSessionStore:
             experiment_type=ExperimentType(session["experiment_type"]) if session["experiment_type"] else None,
             created_at=datetime.fromisoformat(session["created_at"]),
             remote_dep_id=session.get("remote_dep_id"),
+            site_base_url=session.get("site_base_url"),
             site_url=session.get("site_url"),
             em_subtype=EMSubType(session.get("em_subtype")) if session.get("em_subtype") else None,
             coordinates=session.get("coordinates"),
@@ -91,9 +93,15 @@ class JsonSessionStore:
         session["coordinates"] = coordinates
         self._save()
 
-    def set_remote_dep_id(self, dep_id: str, site_url: str | None = None) -> None:
+    def set_remote_dep_id(
+        self,
+        dep_id: str,
+        site_base_url: str | None = None,
+        site_url: str | None = None,
+    ) -> None:
         session = self._require_session()
         session["remote_dep_id"] = dep_id
+        session["site_base_url"] = site_base_url
         session["site_url"] = site_url
         self._save()
 

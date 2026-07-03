@@ -38,6 +38,7 @@ def test_create_and_get_session(tmp_path):
     assert result.country == Country.UK
     assert result.experiment_type == ExperimentType.XRAY
     assert result.remote_dep_id is None
+    assert result.site_base_url is None
     assert result.site_url is None
     store.close()
 
@@ -75,10 +76,18 @@ def test_set_remote_dep_id(tmp_path):
     session = _make_session()
     store.create_session(session)
 
-    store.set_remote_dep_id("D_8000000001", site_url="https://deposit.wwpdb.org/D_8000000001")
+    store.set_remote_dep_id(
+        "D_8000000001",
+        site_base_url="https://deposit-pdbe.wwpdb.org/deposition",
+        site_url="https://deposit-pdbe.wwpdb.org/deposition/api/v1/depositions/D_8000000001/view",
+    )
     result = store.get_session()
     assert result.remote_dep_id == "D_8000000001"
-    assert result.site_url == "https://deposit.wwpdb.org/D_8000000001"
+    assert result.site_base_url == "https://deposit-pdbe.wwpdb.org/deposition"
+    assert (
+        result.site_url
+        == "https://deposit-pdbe.wwpdb.org/deposition/api/v1/depositions/D_8000000001/view"
+    )
     store.close()
 
 
