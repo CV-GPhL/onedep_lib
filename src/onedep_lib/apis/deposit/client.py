@@ -261,7 +261,6 @@ class HttpApiClient:
         if last_data is None:
             raise ApiError("No response received during upload", 500)
 
-        last_data.pop("uploadedBytes", None)
         last_data["file_type"] = last_data.pop("type")
         last_data["file_id"] = last_data.pop("id")
         return DepositedFile(**last_data)
