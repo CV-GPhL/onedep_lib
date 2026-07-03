@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from urllib.parse import urlsplit, urlunsplit
 from json import JSONDecodeError
 from typing import Union
 
@@ -22,6 +24,20 @@ from onedep_lib.enums import Country, FileType
 from onedep_lib.exceptions import ApiError
 
 
+_API_SUFFIX_RE = re.compile(r"/api/v[0-9]+/?$")
+
+
+def _normalize_site_base_url(url: str) -> str:
+    stripped = url.rstrip("/")
+    split = urlsplit(stripped)
+    path = _API_SUFFIX_RE.sub("", split.path.rstrip("/"))
+    return urlunsplit((split.scheme, split.netloc, path, "", ""))
+
+
+def _api_base_url(site_base_url: str, version: str) -> str:
+    return f"{site_base_url.rstrip('/')}/api/{version}/"
+
+
 class HttpApiClient:
     def __init__(
         self,
@@ -34,11 +50,24 @@ class HttpApiClient:
         self._auth_provider = auth_provider
         self._ver = ver
         self._logger = logger or logging.getLogger(__name__)
-        self._base_url = f"{config.hostname}/api/{ver}/"
+        self._site_base_url = _normalize_site_base_url(config.hostname)
+        self._base_url = _api_base_url(self._site_base_url, ver)
         if not config.ssl_verify:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self._session = requests.Session()
         self._session.verify = config.ssl_verify
+
+    @property
+    def site_base_url(self) -> str:
+        return self._site_base_url
+
+    @property
+    def api_base_url(self) -> str:
+        return self._base_url
+
+    def _set_site_base_url(self, site_base_url: str) -> None:
+        self._site_base_url = _normalize_site_base_url(site_base_url)
+        self._base_url = _api_base_url(self._site_base_url, self._ver)
 
     def _refresh_auth_header(self) -> None:
         if self._auth_provider is not None:
@@ -97,11 +126,10 @@ class HttpApiClient:
             and data_out.get("code") == "invalid_location"
             and "base_url" in data_out.get("extras", {})
         ):
-            new_base = data_out["extras"]["base_url"]
-            self._logger.warning("Invalid deposit site, redirecting to %s", new_base)
+            self._set_site_base_url(data_out["extras"]["base_url"])
+            self._logger.warning("Invalid deposit site, redirecting to %s", self._base_url)
             if not self._config.redirect:
-                raise ApiError(f"Invalid deposit site; correct site is {new_base}", 400)
-            self._base_url = f"{new_base}/api/{self._ver}/"
+                raise ApiError(f"Invalid deposit site; correct site is {self._base_url}", 400)
             full_url = self._base_url + endpoint
             try:
                 response = self._session.request(
@@ -249,7 +277,7 @@ class HttpApiClient:
                     self._logger.warning("Invalid deposit site, redirecting to %s", new_base)
                     if not self._config.redirect:
                         raise ApiError(f"Invalid deposit site; correct site is {new_base}", 400)
-                    self._base_url = f"{new_base}/api/{self._ver}/"
+                    self._set_site_base_url(new_base)
                     fp.seek(chunk_start)
                     continue
 

@@ -2,6 +2,7 @@ import pytest
 from pytest_httpserver import HTTPServer
 from onedep_lib.apis.deposit.client import HttpApiClient
 from onedep_lib.apis.deposit.models import WwPDBDeposition, DepositedFile, DepositStatus
+from onedep_lib.config import DepositConfig
 from onedep_lib.enums import Country, ExperimentType, FileType
 from onedep_lib.apis.deposit.models import Experiment
 from onedep_lib.exceptions import ApiError
@@ -48,6 +49,25 @@ _STATUS_RESPONSE = {
     "details": "deposited",
     "date": "2024-01-01T00:00:00",
 }
+
+
+def test_client_derives_api_base_from_site_root(api_config):
+    client = HttpApiClient(api_config)
+
+    assert client.site_base_url == api_config.hostname.rstrip("/")
+    assert client.api_base_url == f"{api_config.hostname.rstrip('/')}/api/v1/"
+
+
+def test_client_normalizes_accidental_api_base_url(api_config):
+    config = DepositConfig(
+        hostname=f"{api_config.hostname.rstrip('/')}/api/v1/",
+        ssl_verify=False,
+        redirect=True,
+    )
+    client = HttpApiClient(config)
+
+    assert client.site_base_url == api_config.hostname.rstrip("/")
+    assert client.api_base_url == f"{api_config.hostname.rstrip('/')}/api/v1/"
 
 
 def test_create_deposition(httpserver: HTTPServer, client: HttpApiClient):
