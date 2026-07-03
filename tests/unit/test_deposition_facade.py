@@ -98,6 +98,9 @@ def test_deposit_persists_site_base_url(dep, tmp_path, stub_api):
 
 
 def test_deposit_resume_uses_session_site_base_url_for_client(monkeypatch, tmp_path):
+    monkeypatch.setenv("ONEDEP_ACCESS_TOKEN", "env-access")
+    monkeypatch.setenv("ONEDEP_REFRESH_TOKEN", "env-refresh")
+
     dep = deposit_init(
         email="test@example.com",
         users=["0000-0001-2345-6789"],

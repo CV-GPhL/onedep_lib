@@ -69,6 +69,22 @@ def check_auth_key(config: DepositConfig) -> bool:
         return False
 
 
+def _load_config_without_token_env(**overrides) -> DepositConfig:
+    token_env_vars = ("ONEDEP_ACCESS_TOKEN", "ONEDEP_REFRESH_TOKEN")
+    missing = object()
+    previous = {name: os.environ.get(name, missing) for name in token_env_vars}
+    try:
+        for name in token_env_vars:
+            os.environ.pop(name, None)
+        return DepositConfig.load(**overrides)
+    finally:
+        for name, value in previous.items():
+            if value is missing:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def _config_for_hostname(config: DepositConfig, hostname: str) -> DepositConfig:
     overrides = {
         field.name: getattr(config, field.name)
@@ -76,7 +92,7 @@ def _config_for_hostname(config: DepositConfig, hostname: str) -> DepositConfig:
         if field.name not in {"access_token", "refresh_token", "hostname"}
     }
     overrides["hostname"] = hostname
-    return DepositConfig.load(**overrides)
+    return _load_config_without_token_env(**overrides)
 
 
 def deposit_init(
