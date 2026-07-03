@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
+from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,6 +67,16 @@ def check_auth_key(config: DepositConfig) -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+def _config_for_hostname(config: DepositConfig, hostname: str) -> DepositConfig:
+    overrides = {
+        field.name: getattr(config, field.name)
+        for field in fields(DepositConfig)
+        if field.name not in {"access_token", "refresh_token", "hostname"}
+    }
+    overrides["hostname"] = hostname
+    return DepositConfig.load(**overrides)
 
 
 def deposit_init(
@@ -144,8 +155,9 @@ def deposit_resume(
     """
     base_dir = _base_dir or config.session_dir
     store: SessionStore = JsonSessionStore(session_id, base_dir=base_dir)
-    store.get_session()  # raises KeyError if not found
-    api_client: ApiClient = _api_client or HttpApiClient(config, auth_provider=TokenStore(config))
+    session = store.get_session()  # raises KeyError if not found
+    client_config = _config_for_hostname(config, session.site_base_url) if session.site_base_url else config
+    api_client: ApiClient = _api_client or HttpApiClient(client_config, auth_provider=TokenStore(client_config))
     check_runner: CheckRunnerProtocol = _check_runner or CheckRunner(
         LocalSchemaProvider(config.local_schema_cache_dir)
         if config.fetch_local_schema

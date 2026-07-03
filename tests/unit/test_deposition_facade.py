@@ -97,6 +97,66 @@ def test_deposit_persists_site_base_url(dep, tmp_path, stub_api):
     resumed.close()
 
 
+def test_deposit_resume_uses_session_site_base_url_for_client(monkeypatch, tmp_path):
+    dep = deposit_init(
+        email="test@example.com",
+        users=["0000-0001-2345-6789"],
+        country=Country.USA,
+        config=DepositConfig(session_dir=tmp_path),
+        experiment_type=ExperimentType.XRAY,
+        _base_dir=tmp_path,
+        _api_client=StubApiClient(),
+        _check_runner=StubCheckRunner(),
+    )
+    dep._store.set_remote_dep_id(
+        "D_999",
+        site_url="https://deposit-pdbe.wwpdb.org/deposition/D_999",
+        site_base_url="https://deposit-pdbe.wwpdb.org/deposition",
+    )
+    session_id = dep.session_id
+    dep.close()
+
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[auths.default_wwpdb_org]
+access_token = "default-access"
+refresh_token = "default-refresh"
+
+[auths.deposit_pdbe_wwpdb_org]
+access_token = "pdbe-access"
+refresh_token = "pdbe-refresh"
+""",
+        encoding="utf-8",
+    )
+
+    captured = {}
+
+    class CapturingClient:
+        def __init__(self, config, auth_provider):
+            captured["hostname"] = config.hostname
+            captured["access_token"] = config.access_token
+            captured["auth_provider"] = auth_provider
+
+    monkeypatch.setattr(dsp, "HttpApiClient", CapturingClient)
+    monkeypatch.setattr(dsp, "TokenStore", lambda config: ("token-store", config.hostname))
+
+    deposit_resume(
+        session_id,
+        config=DepositConfig.load(
+            hostname="https://default.wwpdb.org/deposition",
+            session_dir=tmp_path,
+            config_path=config_path,
+        ),
+        _base_dir=tmp_path,
+        _check_runner=StubCheckRunner(),
+    )
+
+    assert captured["hostname"] == "https://deposit-pdbe.wwpdb.org/deposition"
+    assert captured["access_token"] == "pdbe-access"
+    assert captured["auth_provider"] == ("token-store", "https://deposit-pdbe.wwpdb.org/deposition")
+
+
 def test_deposit_uses_client_site_base_url_fallback(tmp_path):
     class ClientSiteBaseApi(StubApiClient):
         site_base_url = "https://client.example.org/deposition"
