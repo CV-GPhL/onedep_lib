@@ -126,10 +126,11 @@ class HttpApiClient:
             and data_out.get("code") == "invalid_location"
             and "base_url" in data_out.get("extras", {})
         ):
-            self._set_site_base_url(data_out["extras"]["base_url"])
-            self._logger.warning("Invalid deposit site, redirecting to %s", self._base_url)
+            site_base_url = _normalize_site_base_url(data_out["extras"]["base_url"])
+            self._logger.warning("Invalid deposit site, redirecting to %s", site_base_url)
             if not self._config.redirect:
-                raise ApiError(f"Invalid deposit site; correct site is {self._base_url}", 400)
+                raise ApiError(f"Invalid deposit site; correct site is {site_base_url}", 400)
+            self._set_site_base_url(site_base_url)
             full_url = self._base_url + endpoint
             try:
                 response = self._session.request(

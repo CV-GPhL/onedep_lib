@@ -137,6 +137,30 @@ def test_redirect_updates_base_url_and_retries(httpserver: HTTPServer, api_confi
     assert result == []
 
 
+def test_redirect_disabled_does_not_mutate_base_url(httpserver: HTTPServer, api_config):
+    original_site_base_url = api_config.hostname.rstrip("/")
+    redirected_site_base_url = "https://other.example.org/deposition"
+    redirected_base = f"{redirected_site_base_url}/api/v1/"
+    config = DepositConfig(
+        hostname=original_site_base_url,
+        ssl_verify=False,
+        redirect=False,
+    )
+    httpserver.expect_request("/api/v1/depositions/", method="GET").respond_with_json(
+        {
+            "code": "invalid_location",
+            "extras": {"base_url": redirected_base},
+        }
+    )
+    client = HttpApiClient(config)
+
+    with pytest.raises(ApiError, match=redirected_site_base_url):
+        client.get_all_depositions()
+
+    assert client.site_base_url == original_site_base_url
+    assert client.api_base_url == f"{original_site_base_url}/api/v1/"
+
+
 def test_204_returns_empty(httpserver: HTTPServer, client: HttpApiClient):
     httpserver.expect_request("/api/v1/depositions/D_1/files/1", method="DELETE").respond_with_data("", status=204)
     result = client.remove_file("D_1", 1)
