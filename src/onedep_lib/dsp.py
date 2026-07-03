@@ -179,6 +179,11 @@ class Deposition:
         return self._session.remote_dep_id
 
     @property
+    def site_base_url(self) -> str | None:
+        """Remote deposition site root, populated after deposit() is called."""
+        return self._session.site_base_url
+
+    @property
     def site_url(self) -> str | None:
         """Remote deposition site URL, populated after deposit() is called."""
         return self._session.site_url
@@ -359,8 +364,14 @@ class Deposition:
                 experiments=[experiment],
             )
             dep_id = remote_dep.dep_id
-            self._store.set_remote_dep_id(dep_id, site_url=remote_dep.site_url)
+            site_base_url = remote_dep.site_base_url or getattr(self._api_client, "site_base_url", None)
+            self._store.set_remote_dep_id(
+                dep_id,
+                site_url=remote_dep.site_url,
+                site_base_url=site_base_url,
+            )
             self._session.remote_dep_id = dep_id
+            self._session.site_base_url = site_base_url
             self._session.site_url = remote_dep.site_url
         else:
             dep_id = self._session.remote_dep_id

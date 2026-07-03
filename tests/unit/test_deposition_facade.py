@@ -35,6 +35,7 @@ def stub_api():
 @pytest.fixture
 def dep(tmp_path, stub_api):
     return deposit_init(
+        config=DepositConfig(),
         email="test@example.com",
         users=["0000-0001-2345-6789"],
         country=Country.USA,
@@ -57,6 +58,10 @@ def test_site_url_initially_none(dep):
     assert dep.site_url is None
 
 
+def test_site_base_url_initially_none(dep):
+    assert dep.site_base_url is None
+
+
 def test_deposit_returns_remote_id(dep, stub_api):
     remote_id = dep.deposit()
     assert remote_id == "D_999"
@@ -66,6 +71,29 @@ def test_deposit_returns_remote_id(dep, stub_api):
 def test_deposit_exposes_site_url(dep, stub_api):
     dep.deposit()
     assert dep.site_url == "https://deposit-pdbe.wwpdb.org/deposition/D_999"
+
+
+def test_deposit_exposes_site_base_url(dep):
+    dep.deposit()
+
+    assert dep.site_base_url == "https://deposit-pdbe.wwpdb.org/deposition"
+
+
+def test_deposit_persists_site_base_url(dep, tmp_path, stub_api):
+    session_id = dep.session_id
+    dep.deposit()
+    dep.close()
+
+    resumed = deposit_resume(
+        session_id,
+        config=DepositConfig(),
+        _base_dir=tmp_path,
+        _api_client=stub_api,
+        _check_runner=StubCheckRunner(),
+    )
+
+    assert resumed.site_base_url == "https://deposit-pdbe.wwpdb.org/deposition"
+    resumed.close()
 
 
 def test_deposit_calls_process(dep, stub_api):
@@ -86,6 +114,7 @@ def test_get_status_before_deposit_raises(dep):
 
 def test_deposit_without_experiment_type_raises(tmp_path):
     dep = deposit_init(
+        config=DepositConfig(),
         email="test@example.com",
         users=[],
         country=Country.USA,
@@ -132,6 +161,7 @@ def test_deposit_resume_restores_session(dep, tmp_path, stub_api):
     dep.close()
     resumed = deposit_resume(
         session_id,
+        config=DepositConfig(),
         _base_dir=tmp_path,
         _api_client=stub_api,
         _check_runner=StubCheckRunner(),
@@ -142,6 +172,7 @@ def test_deposit_resume_restores_session(dep, tmp_path, stub_api):
 
 def test_context_manager(tmp_path, stub_api):
     with deposit_init(
+        config=DepositConfig(),
         email="test@example.com",
         users=[],
         country=Country.USA,
