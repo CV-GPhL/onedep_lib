@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 from onedep_lib.checks.report import CheckReport
 from onedep_lib import dsp
+from onedep_lib.apis.deposit.models import WwPDBDeposition
 from onedep_lib.config import DepositConfig
 from onedep_lib.dsp import deposit_init, deposit_resume
 from onedep_lib.enums import Country, ExperimentType, FileType
@@ -94,6 +95,44 @@ def test_deposit_persists_site_base_url(dep, tmp_path, stub_api):
 
     assert resumed.site_base_url == "https://deposit-pdbe.wwpdb.org/deposition"
     resumed.close()
+
+
+def test_deposit_uses_client_site_base_url_fallback(tmp_path):
+    class ClientSiteBaseApi(StubApiClient):
+        site_base_url = "https://client.example.org/deposition"
+
+        def create_deposition(self, email, users, country, experiments, password="") -> WwPDBDeposition:
+            return WwPDBDeposition(
+                dep_id="D_999",
+                email=email,
+                pdb_id=None,
+                emdb_id=None,
+                bmrb_id=None,
+                title="",
+                hold_exp_date=None,
+                created="2024-01-01T00:00:00",
+                last_login="2024-01-01T00:00:00",
+                site="pdbe",
+                status="DEP",
+                site_url="https://deposit-pdbe.wwpdb.org/deposition/D_999",
+                site_base_url=None,
+            )
+
+    api_client = ClientSiteBaseApi()
+    dep = deposit_init(
+        config=DepositConfig(),
+        email="test.com",
+        users=["0000-0001-2345-6789"],
+        country=Country.USA,
+        experiment_type=ExperimentType.XRAY,
+        _base_dir=tmp_path,
+        _api_client=api_client,
+        _check_runner=StubCheckRunner(),
+    )
+
+    dep.deposit()
+
+    assert dep.site_base_url == "https://client.example.org/deposition"
 
 
 def test_deposit_calls_process(dep, stub_api):
