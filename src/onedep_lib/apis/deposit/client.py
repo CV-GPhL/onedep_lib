@@ -159,6 +159,10 @@ class HttpApiClient:
             except requests.exceptions.RequestException as e:
                 raise ApiError("Retry after redirect failed", 503) from e
             data_out = self._check_response(response)
+            if isinstance(data_out, dict):
+                retry_site_base_url = self._redirect_site_base_url(data_out)
+                if retry_site_base_url is not None:
+                    raise ApiError("Redirect retry returned another invalid_location", 502)
 
         return data_out
 

@@ -142,6 +142,23 @@ def test_redirect_updates_base_url_and_retries(httpserver: HTTPServer, api_confi
     assert client.api_base_url == f"{correct_base}/api/v1/"
 
 
+def test_redirect_retry_malformed_redirect_raises_api_error(httpserver: HTTPServer, api_config):
+    correct_base = httpserver.url_for("").rstrip("/")
+    httpserver.expect_ordered_request("/api/v1/depositions/", method="GET").respond_with_json(
+        {
+            "code": "invalid_location",
+            "extras": {"base_url": f"{correct_base}/api/v1/"},
+        }
+    )
+    httpserver.expect_ordered_request("/api/v1/depositions/", method="GET").respond_with_json(
+        {"code": "invalid_location", "extras": {}}
+    )
+    client = HttpApiClient(api_config)
+
+    with pytest.raises(ApiError, match="missing base_url"):
+        client.get_all_depositions()
+
+
 def test_upload_file_redirect_normalizes_base_url(httpserver: HTTPServer, api_config, tmp_path):
     test_file = tmp_path / "test.cif"
     test_file.write_bytes(b"X" * 8)
