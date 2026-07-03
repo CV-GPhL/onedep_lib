@@ -76,6 +76,28 @@ class HttpApiClient:
             token = self._config.access_token or ""
         self._session.headers["Authorization"] = f"Bearer {token}"
 
+    def _redirect_site_base_url(self, data_out: dict) -> str | None:
+        if data_out.get("code") != "invalid_location":
+            return None
+        extras = data_out.get("extras", {})
+        if not isinstance(extras, dict):
+            return None
+        base_url = extras.get("base_url")
+        if not isinstance(base_url, str) or not base_url.strip():
+            return None
+        return _normalize_site_base_url(base_url)
+
+    def _handle_redirect(self, data_out: dict) -> bool:
+        site_base_url = self._redirect_site_base_url(data_out)
+        if site_base_url is None:
+            return False
+        self._logger.warning("Invalid deposit site, redirecting to %s", site_base_url)
+        if not self._config.redirect:
+            raise ApiError(f"Invalid deposit site; correct site is {site_base_url}", 400)
+        self._set_site_base_url(site_base_url)
+        self._refresh_auth_header()
+        return True
+
     def _check_response(self, response: requests.Response) -> dict:
         if response.status_code == 204:
             return {}
@@ -121,16 +143,7 @@ class HttpApiClient:
 
         data_out = self._check_response(response)
 
-        if (
-            isinstance(data_out, dict)
-            and data_out.get("code") == "invalid_location"
-            and "base_url" in data_out.get("extras", {})
-        ):
-            site_base_url = _normalize_site_base_url(data_out["extras"]["base_url"])
-            self._logger.warning("Invalid deposit site, redirecting to %s", site_base_url)
-            if not self._config.redirect:
-                raise ApiError(f"Invalid deposit site; correct site is {site_base_url}", 400)
-            self._set_site_base_url(site_base_url)
+        if isinstance(data_out, dict) and self._handle_redirect(data_out):
             full_url = self._base_url + endpoint
             try:
                 response = self._session.request(
@@ -269,16 +282,7 @@ class HttpApiClient:
 
                 data_out = self._check_response(response)
 
-                if (
-                    isinstance(data_out, dict)
-                    and data_out.get("code") == "invalid_location"
-                    and "base_url" in data_out.get("extras", {})
-                ):
-                    new_base = data_out["extras"]["base_url"]
-                    self._logger.warning("Invalid deposit site, redirecting to %s", new_base)
-                    if not self._config.redirect:
-                        raise ApiError(f"Invalid deposit site; correct site is {new_base}", 400)
-                    self._set_site_base_url(new_base)
+                if isinstance(data_out, dict) and self._handle_redirect(data_out):
                     fp.seek(chunk_start)
                     continue
 

@@ -128,13 +128,44 @@ def test_redirect_updates_base_url_and_retries(httpserver: HTTPServer, api_confi
     httpserver.expect_ordered_request("/api/v1/depositions/", method="GET").respond_with_json(
         {
             "code": "invalid_location",
-            "extras": {"base_url": correct_base},
+            "extras": {"base_url": f"{correct_base}/api/v1/"},
         }
     )
     httpserver.expect_ordered_request("/api/v1/depositions/", method="GET").respond_with_json({"items": []})
     client = HttpApiClient(api_config)
     result = client.get_all_depositions()
     assert result == []
+    assert client.site_base_url == correct_base
+    assert client.api_base_url == f"{correct_base}/api/v1/"
+
+
+def test_upload_file_redirect_normalizes_base_url(httpserver: HTTPServer, api_config, tmp_path):
+    test_file = tmp_path / "test.cif"
+    test_file.write_bytes(b"X" * 8)
+    correct_base = httpserver.url_for("").rstrip("/")
+
+    httpserver.expect_ordered_request(
+        "/api/v1/depositions/D_800001/files/",
+        method="POST",
+    ).respond_with_json(
+        {
+            "code": "invalid_location",
+            "extras": {"base_url": f"{correct_base}/api/v1/"},
+        }
+    )
+    httpserver.expect_ordered_request(
+        "/api/v1/depositions/D_800001/files/",
+        method="POST",
+    ).respond_with_json(
+        {**_FILE_RESPONSE, "uploadedBytes": 8}
+    )
+
+    client = HttpApiClient(api_config)
+    deposited = client.upload_file("D_800001", str(test_file), FileType.MMCIF_COORD, _chunk_size=8)
+
+    assert deposited.file_id == 1
+    assert client.site_base_url == correct_base
+    assert client.api_base_url == f"{correct_base}/api/v1/"
 
 
 def test_redirect_disabled_does_not_mutate_base_url(httpserver: HTTPServer, api_config):
