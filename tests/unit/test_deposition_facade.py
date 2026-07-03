@@ -38,6 +38,7 @@ def dep(tmp_path, stub_api):
         email="test@example.com",
         users=["0000-0001-2345-6789"],
         country=Country.USA,
+        config=DepositConfig(),
         experiment_type=ExperimentType.XRAY,
         _base_dir=tmp_path,
         _api_client=stub_api,
@@ -89,6 +90,7 @@ def test_deposit_without_experiment_type_raises(tmp_path):
         email="test@example.com",
         users=[],
         country=Country.USA,
+        config=DepositConfig(),
         _base_dir=tmp_path,
         _api_client=StubApiClient(),
         _check_runner=StubCheckRunner(),
@@ -132,6 +134,7 @@ def test_deposit_resume_restores_session(dep, tmp_path, stub_api):
     dep.close()
     resumed = deposit_resume(
         session_id,
+        config=DepositConfig(),
         _base_dir=tmp_path,
         _api_client=stub_api,
         _check_runner=StubCheckRunner(),
@@ -145,6 +148,7 @@ def test_context_manager(tmp_path, stub_api):
         email="test@example.com",
         users=[],
         country=Country.USA,
+        config=DepositConfig(),
         experiment_type=ExperimentType.XRAY,
         _base_dir=tmp_path,
         _api_client=stub_api,
