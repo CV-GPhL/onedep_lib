@@ -14,8 +14,9 @@ class SessionStore(Protocol):
     def set_remote_dep_id(
         self,
         dep_id: str,
-        site_base_url: str | None = None,
         site_url: str | None = None,
+        *,
+        site_base_url: str | None = None,
     ) -> None: ...
     def add_file(self, file: LocalFile) -> None: ...
     def remove_file(self, file_id: str) -> None: ...

@@ -20,6 +20,22 @@ def _make_session(session_id: str = "sess-1") -> LocalSession:
     )
 
 
+def test_local_session_positional_site_url_is_compatible():
+    session = LocalSession(
+        "abc-123",
+        "user.com",
+        ["0000-0002-5109-8728"],
+        Country.USA,
+        ExperimentType.XRAY,
+        datetime(2026, 1, 1, 12, 0, 0),
+        "D_8000000001",
+        "view-url",
+    )
+    assert session.remote_dep_id == "D_8000000001"
+    assert session.site_url == "view-url"
+    assert session.site_base_url is None
+
+
 def test_store_creates_db_file(tmp_path):
     store = JsonSessionStore("sess-1", base_dir=tmp_path)
     assert store.json_path.exists()
@@ -88,6 +104,19 @@ def test_set_remote_dep_id(tmp_path):
         result.site_url
         == "https://deposit-pdbe.wwpdb.org/deposition/api/v1/depositions/D_8000000001/view"
     )
+    store.close()
+
+
+def test_set_remote_dep_id_positional_site_url_is_compatible(tmp_path):
+    store = JsonSessionStore("sess-1", base_dir=tmp_path)
+    session = _make_session()
+    store.create_session(session)
+
+    store.set_remote_dep_id("D_8000000001", "view-url")
+    result = store.get_session()
+    assert result.remote_dep_id == "D_8000000001"
+    assert result.site_url == "view-url"
+    assert result.site_base_url is None
     store.close()
 
 

@@ -115,6 +115,17 @@ def test_set_remote_dep_id(store: JsonSessionStore, session: LocalSession):
     )
 
 
+def test_set_remote_dep_id_positional_site_url_is_compatible(
+    store: JsonSessionStore, session: LocalSession
+):
+    store.create_session(session)
+    store.set_remote_dep_id("D_8000000001", "view-url")
+    loaded = store.get_session()
+    assert loaded.remote_dep_id == "D_8000000001"
+    assert loaded.site_url == "view-url"
+    assert loaded.site_base_url is None
+
+
 def test_persists_across_store_instances(tmp_path: Path, session: LocalSession):
     store1 = JsonSessionStore("test-session", base_dir=tmp_path)
     store1.create_session(session)

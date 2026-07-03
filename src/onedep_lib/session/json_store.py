@@ -96,8 +96,9 @@ class JsonSessionStore:
     def set_remote_dep_id(
         self,
         dep_id: str,
-        site_base_url: str | None = None,
         site_url: str | None = None,
+        *,
+        site_base_url: str | None = None,
     ) -> None:
         session = self._require_session()
         session["remote_dep_id"] = dep_id
