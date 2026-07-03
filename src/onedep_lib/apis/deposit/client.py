@@ -81,10 +81,10 @@ class HttpApiClient:
             return None
         extras = data_out.get("extras", {})
         if not isinstance(extras, dict):
-            return None
+            raise ApiError("Invalid deposit site response missing base_url", 502)
         base_url = extras.get("base_url")
         if not isinstance(base_url, str) or not base_url.strip():
-            return None
+            raise ApiError("Invalid deposit site response missing base_url", 502)
         return _normalize_site_base_url(base_url)
 
     def _handle_redirect(self, data_out: dict) -> bool:
@@ -287,7 +287,14 @@ class HttpApiClient:
                     continue
 
                 last_data = data_out
-                uploaded_bytes = data_out.get("uploadedBytes", chunk_end + 1)
+                next_uploaded_bytes = data_out.get("uploadedBytes", chunk_end + 1)
+                if not isinstance(next_uploaded_bytes, int) or isinstance(next_uploaded_bytes, bool):
+                    raise ApiError("Invalid uploadedBytes in response", 502)
+                if not chunk_start < next_uploaded_bytes <= file_size:
+                    raise ApiError("Invalid uploadedBytes in response", 502)
+                uploaded_bytes = next_uploaded_bytes
+                if uploaded_bytes < file_size:
+                    fp.seek(uploaded_bytes)
 
         self._logger.info("Uploaded %d/%d bytes", uploaded_bytes, file_size)
 

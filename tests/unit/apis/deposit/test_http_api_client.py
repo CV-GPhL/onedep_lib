@@ -1,4 +1,7 @@
+import json
+
 import pytest
+from werkzeug.wrappers import Response
 from pytest_httpserver import HTTPServer
 from onedep_lib.apis.deposit.client import HttpApiClient
 from onedep_lib.apis.deposit.models import WwPDBDeposition, DepositedFile, DepositStatus
@@ -168,6 +171,26 @@ def test_upload_file_redirect_normalizes_base_url(httpserver: HTTPServer, api_co
     assert client.api_base_url == f"{correct_base}/api/v1/"
 
 
+def test_json_malformed_redirect_raises_api_error(httpserver: HTTPServer, client: HttpApiClient):
+    httpserver.expect_request("/api/v1/depositions/", method="GET").respond_with_json(
+        {"code": "invalid_location", "extras": {}}
+    )
+
+    with pytest.raises(ApiError, match="missing base_url"):
+        client.get_all_depositions()
+
+
+def test_upload_file_malformed_redirect_raises_api_error(httpserver: HTTPServer, client: HttpApiClient, tmp_path):
+    test_file = tmp_path / "test.cif"
+    test_file.write_bytes(b"X" * 8)
+    httpserver.expect_request("/api/v1/depositions/D_800001/files/", method="POST").respond_with_json(
+        {"code": "invalid_location", "extras": {"base_url": " "}}
+    )
+
+    with pytest.raises(ApiError, match="missing base_url"):
+        client.upload_file("D_800001", str(test_file), FileType.MMCIF_COORD, _chunk_size=8)
+
+
 def test_redirect_disabled_does_not_mutate_base_url(httpserver: HTTPServer, api_config):
     original_site_base_url = api_config.hostname.rstrip("/")
     redirected_site_base_url = "https://other.example.org/deposition"
@@ -219,6 +242,45 @@ def test_upload_file_chunked_sends_content_range(httpserver: HTTPServer, client:
     deposited = client.upload_file("D_800001", str(test_file), FileType.MMCIF_COORD, _chunk_size=8)
     assert deposited.file_id == 1
     assert deposited.file_type is FileType.MMCIF_COORD
+
+
+def test_upload_file_seeks_to_server_uploaded_bytes(httpserver: HTTPServer, client: HttpApiClient, tmp_path):
+    test_file = tmp_path / "test.cif"
+    test_file.write_bytes(b"abcdefghijklmnopqrst")
+    uploaded_chunks = []
+
+    def uploaded_bytes_response(uploaded_bytes: int):
+        def handler(request):
+            uploaded_chunks.append(request.files["file"].read())
+            return Response(json.dumps({"uploadedBytes": uploaded_bytes}), content_type="application/json")
+
+        return handler
+
+    httpserver.expect_ordered_request(
+        "/api/v1/depositions/D_800001/files/",
+        method="POST",
+        headers={"Content-Range": "bytes 0-7/20"},
+    ).respond_with_handler(uploaded_bytes_response(4))
+    httpserver.expect_ordered_request(
+        "/api/v1/depositions/D_800001/files/",
+        method="POST",
+        headers={"Content-Range": "bytes 4-11/20"},
+    ).respond_with_handler(uploaded_bytes_response(12))
+    httpserver.expect_ordered_request(
+        "/api/v1/depositions/D_800001/files/",
+        method="POST",
+        headers={"Content-Range": "bytes 12-19/20"},
+    ).respond_with_handler(
+        lambda request: (
+            uploaded_chunks.append(request.files["file"].read())
+            or Response(json.dumps({**_FILE_RESPONSE, "uploadedBytes": 20}), content_type="application/json")
+        )
+    )
+
+    deposited = client.upload_file("D_800001", str(test_file), FileType.MMCIF_COORD, _chunk_size=8)
+
+    assert deposited.file_id == 1
+    assert uploaded_chunks == [b"abcdefgh", b"efghijkl", b"mnopqrst"]
 
 
 def test_upload_file_chunked_final_response_includes_uploaded_bytes(
