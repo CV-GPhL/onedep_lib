@@ -172,3 +172,100 @@ def test_get_access_token_raises_auth_error_when_no_tokens_loaded(config: Deposi
     # config was constructed directly (not via load()), so access_token is None
     with pytest.raises(AuthError, match="No refresh token stored. Paste a refresh token first."):
         store.get_access_token()
+
+
+class _TokenResponse:
+    status_code = 200
+
+    def __init__(self, access_token: str, refresh_token: str) -> None:
+        self._body = {"access_token": access_token, "refresh_token": refresh_token}
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, str]:
+        return self._body
+
+
+def test_activate_site_refreshes_existing_site_token(monkeypatch, tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        '[default]\nhostname = "https://deposit.wwpdb.org/deposition"\n'
+        "[auths.deposit_wwpdb_org]\n"
+        f'access_token = "{_make_jwt(3600)}"\n'
+        'refresh_token = "default-refresh"\n'
+        "[auths.deposit_pdbe_wwpdb_org]\n"
+        f'access_token = "{_make_jwt(3600)}"\n'
+        'refresh_token = "pdbe-refresh"\n',
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_post(url, json, verify, timeout):
+        calls.append({"url": url, "json": json, "verify": verify, "timeout": timeout})
+        return _TokenResponse("pdbe-access-new", "pdbe-refresh-new")
+
+    monkeypatch.setattr("onedep_lib.auths.token.requests.post", fake_post)
+    store = TokenStore(DepositConfig.load(config_path=config_file))
+
+    assert store.activate_site("https://deposit-pdbe.wwpdb.org/deposition") == "pdbe-access-new"
+
+    assert calls == [
+        {
+            "url": "https://deposit-pdbe.wwpdb.org/deposition/auth/tokens/refresh",
+            "json": {"refresh_token": "pdbe-refresh"},
+            "verify": True,
+            "timeout": 30,
+        }
+    ]
+    assert store._read_entry() == {"access_token": "pdbe-access-new", "refresh_token": "pdbe-refresh-new"}
+    assert "pdbe-refresh-new" in config_file.read_text(encoding="utf-8")
+
+
+def test_activate_site_falls_back_to_current_token_when_site_key_missing(monkeypatch, tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        '[default]\nhostname = "https://deposit.wwpdb.org/deposition"\n'
+        "[auths.deposit_wwpdb_org]\n"
+        f'access_token = "{_make_jwt(3600)}"\n'
+        'refresh_token = "default-refresh"\n',
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_post(url, json, verify, timeout):
+        calls.append({"url": url, "json": json, "verify": verify, "timeout": timeout})
+        return _TokenResponse("pdbe-access-new", "pdbe-refresh-new")
+
+    monkeypatch.setattr("onedep_lib.auths.token.requests.post", fake_post)
+    store = TokenStore(DepositConfig.load(config_path=config_file))
+
+    assert store.activate_site("https://deposit-pdbe.wwpdb.org/deposition") == "pdbe-access-new"
+
+    assert calls[0]["json"] == {"refresh_token": "default-refresh"}
+    text = config_file.read_text(encoding="utf-8")
+    assert "[auths.deposit_pdbe_wwpdb_org]" in text
+    assert 'refresh_token = "pdbe-refresh-new"' in text
+
+
+def test_activate_site_uses_existing_site_token_without_default_token(monkeypatch, tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        '[default]\nhostname = "https://deposit.wwpdb.org/deposition"\n'
+        "[auths.deposit_pdbe_wwpdb_org]\n"
+        f'access_token = "{_make_jwt(3600)}"\n'
+        'refresh_token = "pdbe-refresh"\n',
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_post(url, json, verify, timeout):
+        calls.append({"url": url, "json": json, "verify": verify, "timeout": timeout})
+        return _TokenResponse("pdbe-access-new", "pdbe-refresh-new")
+
+    monkeypatch.setattr("onedep_lib.auths.token.requests.post", fake_post)
+    store = TokenStore(DepositConfig.load(config_path=config_file))
+
+    assert store.activate_site("https://deposit-pdbe.wwpdb.org/deposition") == "pdbe-access-new"
+
+    assert calls[0]["json"] == {"refresh_token": "pdbe-refresh"}

@@ -38,6 +38,21 @@ def _api_base_url(site_base_url: str, version: str) -> str:
     return f"{site_base_url.rstrip('/')}/api/{version}/"
 
 
+def _is_allowed_redirect_url(site_base_url: str, current_site_base_url: str, allowed_domain: str) -> bool:
+    parsed = urlsplit(site_base_url)
+    current = urlsplit(current_site_base_url)
+    host = parsed.hostname.rstrip(".").lower() if parsed.hostname else None
+    current_host = current.hostname.rstrip(".").lower() if current.hostname else None
+    allowed = allowed_domain.rstrip(".").lower()
+    if host is None:
+        return False
+    if current_host is not None and host == current_host:
+        return parsed.scheme == current.scheme
+    if parsed.scheme != "https":
+        return False
+    return host == allowed or host.endswith("." + allowed)
+
+
 class HttpApiClient:
     def __init__(
         self,
@@ -94,8 +109,19 @@ class HttpApiClient:
         self._logger.warning("Invalid deposit site, redirecting to %s", site_base_url)
         if not self._config.redirect:
             raise ApiError(f"Invalid deposit site; correct site is {site_base_url}", 400)
+        if not _is_allowed_redirect_url(
+            site_base_url,
+            self._site_base_url,
+            self._config.allowed_redirect_domain,
+        ):
+            raise ApiError(f"Redirect site is not allowed: {site_base_url}", 400)
+        activate_site = getattr(self._auth_provider, "activate_site", None)
+        if callable(activate_site):
+            token = activate_site(site_base_url)
+            self._session.headers["Authorization"] = f"Bearer {token}"
+        else:
+            self._refresh_auth_header()
         self._set_site_base_url(site_base_url)
-        self._refresh_auth_header()
         return True
 
     def _check_response(self, response: requests.Response) -> dict:

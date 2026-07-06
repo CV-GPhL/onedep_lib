@@ -335,3 +335,100 @@ def test_upload_file_resumes_from_uploaded_bytes(httpserver: HTTPServer, client:
     ).respond_with_json(_FILE_RESPONSE)
     deposited = client.upload_file("D_800001", str(test_file), FileType.MMCIF_COORD, uploaded_bytes=8, _chunk_size=8)
     assert deposited.file_id == 1
+
+
+class RedirectSwitchingAuthProvider:
+    def __init__(self) -> None:
+        self.token = "default-access"
+        self.activated_sites: list[str] = []
+
+    def get_access_token(self) -> str:
+        return self.token
+
+    def activate_site(self, site_base_url: str) -> str:
+        self.activated_sites.append(site_base_url)
+        self.token = "new-site-access"
+        return self.token
+
+
+def test_redirect_switches_auth_provider_before_retry(httpserver: HTTPServer, api_config):
+    correct_base = httpserver.url_for("").rstrip("/")
+    auth = RedirectSwitchingAuthProvider()
+    httpserver.expect_ordered_request(
+        "/api/v1/depositions/",
+        method="GET",
+        headers={"Authorization": "Bearer default-access"},
+    ).respond_with_json(
+        {
+            "code": "invalid_location",
+            "extras": {"base_url": f"{correct_base}/api/v1/"},
+        }
+    )
+    httpserver.expect_ordered_request(
+        "/api/v1/depositions/",
+        method="GET",
+        headers={"Authorization": "Bearer new-site-access"},
+    ).respond_with_json({"items": []})
+
+    client = HttpApiClient(api_config, auth_provider=auth)
+
+    assert client.get_all_depositions() == []
+    assert auth.activated_sites == [correct_base]
+
+
+class FailingRedirectAuthProvider(RedirectSwitchingAuthProvider):
+    def activate_site(self, site_base_url: str) -> str:
+        self.activated_sites.append(site_base_url)
+        raise RuntimeError("token exchange failed")
+
+
+def test_redirect_activation_failure_does_not_switch_base_url(httpserver: HTTPServer, api_config):
+    original_base = api_config.hostname.rstrip("/")
+    redirected_base = f"{original_base}/alternate-deposition"
+    auth = FailingRedirectAuthProvider()
+    httpserver.expect_request("/api/v1/depositions/", method="GET").respond_with_json(
+        {
+            "code": "invalid_location",
+            "extras": {"base_url": f"{redirected_base}/api/v1/"},
+        }
+    )
+    client = HttpApiClient(api_config, auth_provider=auth)
+
+    with pytest.raises(RuntimeError, match="token exchange failed"):
+        client.get_all_depositions()
+
+    assert client.site_base_url == original_base
+    assert auth.activated_sites == [redirected_base]
+
+
+def test_redirect_rejects_same_host_https_downgrade():
+    config = DepositConfig(hostname="https://deposit.wwpdb.org/deposition", redirect=True)
+    auth = RedirectSwitchingAuthProvider()
+    client = HttpApiClient(config, auth_provider=auth)
+
+    with pytest.raises(ApiError, match="not allowed"):
+        client._handle_redirect(
+            {
+                "code": "invalid_location",
+                "extras": {"base_url": "http://deposit.wwpdb.org/deposition/api/v1/"},
+            }
+        )
+
+    assert client.site_base_url == "https://deposit.wwpdb.org/deposition"
+    assert auth.activated_sites == []
+
+
+def test_redirect_rejects_untrusted_site_before_retry(httpserver: HTTPServer, api_config):
+    auth = RedirectSwitchingAuthProvider()
+    httpserver.expect_request("/api/v1/depositions/", method="GET").respond_with_json(
+        {
+            "code": "invalid_location",
+            "extras": {"base_url": "https://deposit.wwpdb.org.evil.example/deposition"},
+        }
+    )
+    client = HttpApiClient(api_config, auth_provider=auth)
+
+    with pytest.raises(ApiError, match="not allowed"):
+        client.get_all_depositions()
+
+    assert auth.activated_sites == []
