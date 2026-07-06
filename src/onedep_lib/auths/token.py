@@ -10,6 +10,7 @@ from onedep_lib.config import DepositConfig, _hostname_to_fqdn_key
 from onedep_lib.exceptions import AuthError, ConfigError
 
 _REFRESH_PATH = "auth/tokens/refresh"
+_EXCHANGE_PATH = "auth/tokens/exchange"
 _REVOKE_PATH = "auth/tokens/revoke"
 
 
@@ -48,7 +49,9 @@ class TokenStore:
         entry = self._entries.get(key)
         if entry is None:
             entry = self._read_entry()
-        access_token, refresh_token = self._request_refresh(site_base_url, entry["refresh_token"])
+            access_token, refresh_token = self._request_exchange(site_base_url, entry["refresh_token"])
+        else:
+            access_token, refresh_token = self._request_refresh(site_base_url, entry["refresh_token"])
         self._config.hostname = site_base_url
         self._store_tokens_for_key(key, access_token, refresh_token)
         return access_token
@@ -115,15 +118,27 @@ class TokenStore:
         self._config.refresh_token = refresh_token
 
     def _request_refresh(self, hostname: str, refresh_token: str) -> tuple[str, str]:
+        return self._request_token_pair(hostname, _REFRESH_PATH, refresh_token, "refresh")
+
+    def _request_exchange(self, hostname: str, refresh_token: str) -> tuple[str, str]:
+        return self._request_token_pair(hostname, _EXCHANGE_PATH, refresh_token, "exchange")
+
+    def _request_token_pair(
+        self,
+        hostname: str,
+        path: str,
+        refresh_token: str,
+        operation: str,
+    ) -> tuple[str, str]:
         try:
             response = requests.post(
-                self._url_for(hostname, _REFRESH_PATH),
+                self._url_for(hostname, path),
                 json={"refresh_token": refresh_token},
                 verify=self._config.ssl_verify,
                 timeout=30,
             )
         except requests.RequestException as exc:
-            raise AuthError(f"Token refresh failed: {exc}") from exc
+            raise AuthError(f"Token {operation} failed: {exc}") from exc
 
         if response.status_code == 401:
             raise AuthError("Refresh token is expired, revoked, or invalid; generate and paste a new token pair.")
@@ -132,12 +147,12 @@ class TokenStore:
             response.raise_for_status()
             body = response.json()
         except Exception as exc:
-            raise AuthError(f"Token refresh failed: {exc}") from exc
+            raise AuthError(f"Token {operation} failed: {exc}") from exc
 
         access_token = body.get("access_token")
         refresh_token_out = body.get("refresh_token")
         if not isinstance(access_token, str) or not isinstance(refresh_token_out, str):
-            raise AuthError("Token refresh response missing access_token or refresh_token")
+            raise AuthError(f"Token {operation} response missing access_token or refresh_token")
         return access_token, refresh_token_out
 
     def _read_entry(self) -> dict[str, str]:

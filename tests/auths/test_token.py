@@ -222,7 +222,7 @@ def test_activate_site_refreshes_existing_site_token(monkeypatch, tmp_path: Path
     assert "pdbe-refresh-new" in config_file.read_text(encoding="utf-8")
 
 
-def test_activate_site_falls_back_to_current_token_when_site_key_missing(monkeypatch, tmp_path: Path):
+def test_activate_site_exchanges_current_token_when_site_key_missing(monkeypatch, tmp_path: Path):
     config_file = tmp_path / "config.toml"
     config_file.write_text(
         '[default]\nhostname = "https://deposit.wwpdb.org/deposition"\n'
@@ -242,7 +242,14 @@ def test_activate_site_falls_back_to_current_token_when_site_key_missing(monkeyp
 
     assert store.activate_site("https://deposit-pdbe.wwpdb.org/deposition") == "pdbe-access-new"
 
-    assert calls[0]["json"] == {"refresh_token": "default-refresh"}
+    assert calls == [
+        {
+            "url": "https://deposit-pdbe.wwpdb.org/deposition/auth/tokens/exchange",
+            "json": {"refresh_token": "default-refresh"},
+            "verify": True,
+            "timeout": 30,
+        }
+    ]
     text = config_file.read_text(encoding="utf-8")
     assert "[auths.deposit_pdbe_wwpdb_org]" in text
     assert 'refresh_token = "pdbe-refresh-new"' in text
