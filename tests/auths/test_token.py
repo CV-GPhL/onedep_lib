@@ -128,6 +128,33 @@ def test_get_access_token_refreshes_when_only_refresh_token_is_loaded(tmp_path: 
     assert store._read_entry() == {"access_token": fresh, "refresh_token": "rotated-refresh"}
 
 
+def test_get_access_token_observes_shared_config_after_another_store_refreshes(monkeypatch, config: DepositConfig):
+    stale_access = _make_jwt(-60)
+    fresh_access = _make_jwt(3600)
+    config.access_token = stale_access
+    config.refresh_token = "stale-refresh"
+    first_store = TokenStore(config)
+    second_store = TokenStore(config)
+    calls = []
+
+    def fake_post(url, json, verify, timeout):
+        calls.append({"url": url, "json": json, "verify": verify, "timeout": timeout})
+        return _TokenResponse(fresh_access, "fresh-refresh")
+
+    monkeypatch.setattr("onedep_lib.auths.token.requests.post", fake_post)
+
+    assert second_store.get_access_token() == fresh_access
+    assert first_store.get_access_token() == fresh_access
+    assert calls == [
+        {
+            "url": "https://deposit.wwpdb.org/deposition/auth/tokens/refresh",
+            "json": {"refresh_token": "stale-refresh"},
+            "verify": True,
+            "timeout": 30,
+        }
+    ]
+
+
 def test_refresh_401_explains_manual_token_required(tmp_path: Path, httpserver):
     config_file = tmp_path / "config.toml"
     config_file.write_text("[default]\n")

@@ -158,6 +158,12 @@ class TokenStore:
     def _read_entry(self) -> dict[str, str]:
         key = self._fqdn_key()
         entry = self._entries.get(key)
+        config_entry = self._entry_from_config()
+        if config_entry is not None and (
+            entry is None or config_entry.get("refresh_token") != entry.get("refresh_token")
+        ):
+            entry = config_entry
+            self._entries[key] = entry
         if entry is None:
             access_token = self._config.access_token
             refresh_token = self._config.refresh_token
@@ -170,6 +176,15 @@ class TokenStore:
         if entry.get("refresh_token") is None:
             raise AuthError("No refresh token stored. Paste a refresh token first.")
         return dict(entry)
+
+    def _entry_from_config(self) -> dict[str, str] | None:
+        refresh_token = self._config.refresh_token
+        if refresh_token is None:
+            return None
+        entry = {"refresh_token": refresh_token}
+        if self._config.access_token is not None:
+            entry["access_token"] = self._config.access_token
+        return entry
 
     def _fqdn_key(self) -> str:
         key = _hostname_to_fqdn_key(self._config.hostname)
