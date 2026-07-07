@@ -181,6 +181,15 @@ new_access_token = store.refresh()
 
 Refresh token rotation is mandatory: each successful refresh call invalidates the old refresh token and issues a new one. Both tokens are persisted to the config file immediately. If the refresh token is expired, revoked, or otherwise invalid, the server returns `401` and `TokenStore` raises `AuthError` with a message prompting the user to generate and paste a new token pair.
 
+### Redirects and token exchange
+
+OneDep depositions may be routed to a different deposition site from the configured default hostname. When the API returns an `invalid_location` response, the client validates the redirected site URL before sending any token. If credentials for that site already exist in `[auths.<fqdn>]`, the client refreshes them against the redirected site. If no credentials exist for the redirected site, the client calls the redirected site `/auth/tokens/exchange` endpoint with the current refresh token; the redirected site validates it server-side and returns a local token pair for that site.
+
+The flow is documented as Mermaid source files in:
+
+- [`docs/diagrams/redirect-existing-site-key.mermaid`](docs/diagrams/redirect-existing-site-key.mermaid)
+- [`docs/diagrams/redirect-token-exchange.mermaid`](docs/diagrams/redirect-token-exchange.mermaid)
+
 ### Revocation
 
 ```python
