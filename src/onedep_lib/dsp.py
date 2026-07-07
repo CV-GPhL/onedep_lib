@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
+from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,6 +67,32 @@ def check_auth_key(config: DepositConfig) -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+def _load_config_without_token_env(**overrides) -> DepositConfig:
+    token_env_vars = ("ONEDEP_ACCESS_TOKEN", "ONEDEP_REFRESH_TOKEN")
+    missing = object()
+    previous = {name: os.environ.get(name, missing) for name in token_env_vars}
+    try:
+        for name in token_env_vars:
+            os.environ.pop(name, None)
+        return DepositConfig.load(**overrides)
+    finally:
+        for name, value in previous.items():
+            if value is missing:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _config_for_hostname(config: DepositConfig, hostname: str) -> DepositConfig:
+    overrides = {
+        field.name: getattr(config, field.name)
+        for field in fields(DepositConfig)
+        if field.name not in {"access_token", "refresh_token", "hostname"}
+    }
+    overrides["hostname"] = hostname
+    return _load_config_without_token_env(**overrides)
 
 
 def deposit_init(
@@ -144,8 +171,9 @@ def deposit_resume(
     """
     base_dir = _base_dir or config.session_dir
     store: SessionStore = JsonSessionStore(session_id, base_dir=base_dir)
-    store.get_session()  # raises KeyError if not found
-    api_client: ApiClient = _api_client or HttpApiClient(config, auth_provider=TokenStore(config))
+    session = store.get_session()  # raises KeyError if not found
+    client_config = _config_for_hostname(config, session.site_base_url) if session.site_base_url else config
+    api_client: ApiClient = _api_client or HttpApiClient(client_config, auth_provider=TokenStore(client_config))
     check_runner: CheckRunnerProtocol = _check_runner or CheckRunner(
         LocalSchemaProvider(config.local_schema_cache_dir)
         if config.fetch_local_schema
@@ -177,6 +205,11 @@ class Deposition:
     def remote_dep_id(self) -> str | None:
         """Remote deposition ID, populated after deposit() is called."""
         return self._session.remote_dep_id
+
+    @property
+    def site_base_url(self) -> str | None:
+        """Remote deposition site root, populated after deposit() is called."""
+        return self._session.site_base_url
 
     @property
     def site_url(self) -> str | None:
@@ -300,8 +333,14 @@ class Deposition:
                 experiments=[experiment],
             )
             dep_id = remote_dep.dep_id
-            self._store.set_remote_dep_id(dep_id, site_url=remote_dep.site_url)
+            site_base_url = remote_dep.site_base_url or getattr(self._api_client, "site_base_url", None)
+            self._store.set_remote_dep_id(
+                dep_id,
+                site_url=remote_dep.site_url,
+                site_base_url=site_base_url,
+            )
             self._session.remote_dep_id = dep_id
+            self._session.site_base_url = site_base_url
             self._session.site_url = remote_dep.site_url
         else:
             dep_id = self._session.remote_dep_id

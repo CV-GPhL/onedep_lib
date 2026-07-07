@@ -27,5 +27,6 @@ class LocalSession:
     created_at: datetime
     remote_dep_id: str | None = None
     site_url: str | None = None
+    site_base_url: str | None = None
     em_subtype: EMSubType | None = None
     coordinates: bool | None = None

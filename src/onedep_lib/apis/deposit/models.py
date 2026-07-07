@@ -103,6 +103,7 @@ class WwPDBDeposition:
     experiments: list[Experiment] = field(default_factory=list)
     errors: list[DepositError] = field(default_factory=list)
     site_url: str | None = None
+    site_base_url: str | None = None
 
     def __post_init__(self) -> None:
         self.dep_id = str(self.dep_id)

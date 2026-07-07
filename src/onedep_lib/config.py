@@ -52,6 +52,7 @@ class DepositConfig:
     hostname: str = "https://deposit.wwpdb.org/deposition"
     ssl_verify: bool = True
     redirect: bool = True
+    allowed_redirect_domain: str = "wwpdb.org"
     fetch_local_schema: bool = True
     local_schema_cache_dir: Path = field(default_factory=lambda: Path(__file__).parent / "schemas" / "json")
     schema_base_url: str = "https://schemas.wwpdb.org/nextdep"
@@ -149,6 +150,18 @@ class DepositConfig:
         if not isinstance(entry, dict):
             raise ConfigError(f"Malformed [auths.{key}] entry in config.toml")
         return entry
+
+    def read_auth_entries(self) -> dict[str, dict]:
+        data = self._read_toml()
+        auths = data.get("auths", {})
+        if not isinstance(auths, dict):
+            raise ConfigError("Malformed [auths] section in config.toml")
+        entries: dict[str, dict] = {}
+        for key, entry in auths.items():
+            if not isinstance(entry, dict):
+                raise ConfigError(f"Malformed [auths.{key}] entry in config.toml")
+            entries[key] = dict(entry)
+        return entries
 
     def write_auth_entry(self, key: str, entry: dict) -> None:
         data = self._read_toml()

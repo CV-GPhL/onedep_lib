@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from urllib.parse import urlsplit, urlunsplit
 from json import JSONDecodeError
 from typing import Union
 
@@ -22,6 +24,35 @@ from onedep_lib.enums import Country, FileType
 from onedep_lib.exceptions import ApiError
 
 
+_API_SUFFIX_RE = re.compile(r"/api/v[0-9]+/?$")
+
+
+def _normalize_site_base_url(url: str) -> str:
+    stripped = url.rstrip("/")
+    split = urlsplit(stripped)
+    path = _API_SUFFIX_RE.sub("", split.path.rstrip("/"))
+    return urlunsplit((split.scheme, split.netloc, path, "", ""))
+
+
+def _api_base_url(site_base_url: str, version: str) -> str:
+    return f"{site_base_url.rstrip('/')}/api/{version}/"
+
+
+def _is_allowed_redirect_url(site_base_url: str, current_site_base_url: str, allowed_domain: str) -> bool:
+    parsed = urlsplit(site_base_url)
+    current = urlsplit(current_site_base_url)
+    host = parsed.hostname.rstrip(".").lower() if parsed.hostname else None
+    current_host = current.hostname.rstrip(".").lower() if current.hostname else None
+    allowed = allowed_domain.rstrip(".").lower()
+    if host is None:
+        return False
+    if current_host is not None and host == current_host:
+        return parsed.scheme == current.scheme
+    if parsed.scheme != "https":
+        return False
+    return host == allowed or host.endswith("." + allowed)
+
+
 class HttpApiClient:
     def __init__(
         self,
@@ -34,11 +65,24 @@ class HttpApiClient:
         self._auth_provider = auth_provider
         self._ver = ver
         self._logger = logger or logging.getLogger(__name__)
-        self._base_url = f"{config.hostname}/api/{ver}/"
+        self._site_base_url = _normalize_site_base_url(config.hostname)
+        self._base_url = _api_base_url(self._site_base_url, ver)
         if not config.ssl_verify:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self._session = requests.Session()
         self._session.verify = config.ssl_verify
+
+    @property
+    def site_base_url(self) -> str:
+        return self._site_base_url
+
+    @property
+    def api_base_url(self) -> str:
+        return self._base_url
+
+    def _set_site_base_url(self, site_base_url: str) -> None:
+        self._site_base_url = _normalize_site_base_url(site_base_url)
+        self._base_url = _api_base_url(self._site_base_url, self._ver)
 
     def _refresh_auth_header(self) -> None:
         if self._auth_provider is not None:
@@ -46,6 +90,39 @@ class HttpApiClient:
         else:
             token = self._config.access_token or ""
         self._session.headers["Authorization"] = f"Bearer {token}"
+
+    def _redirect_site_base_url(self, data_out: dict) -> str | None:
+        if data_out.get("code") != "invalid_location":
+            return None
+        extras = data_out.get("extras", {})
+        if not isinstance(extras, dict):
+            raise ApiError("Invalid deposit site response missing base_url", 502)
+        base_url = extras.get("base_url")
+        if not isinstance(base_url, str) or not base_url.strip():
+            raise ApiError("Invalid deposit site response missing base_url", 502)
+        return _normalize_site_base_url(base_url)
+
+    def _handle_redirect(self, data_out: dict) -> bool:
+        site_base_url = self._redirect_site_base_url(data_out)
+        if site_base_url is None:
+            return False
+        self._logger.warning("Invalid deposit site, redirecting to %s", site_base_url)
+        if not self._config.redirect:
+            raise ApiError(f"Invalid deposit site; correct site is {site_base_url}", 400)
+        if not _is_allowed_redirect_url(
+            site_base_url,
+            self._site_base_url,
+            self._config.allowed_redirect_domain,
+        ):
+            raise ApiError(f"Redirect site is not allowed: {site_base_url}", 400)
+        activate_site = getattr(self._auth_provider, "activate_site", None)
+        if callable(activate_site):
+            token = activate_site(site_base_url)
+            self._session.headers["Authorization"] = f"Bearer {token}"
+        else:
+            self._refresh_auth_header()
+        self._set_site_base_url(site_base_url)
+        return True
 
     def _check_response(self, response: requests.Response) -> dict:
         if response.status_code == 204:
@@ -92,16 +169,7 @@ class HttpApiClient:
 
         data_out = self._check_response(response)
 
-        if (
-            isinstance(data_out, dict)
-            and data_out.get("code") == "invalid_location"
-            and "base_url" in data_out.get("extras", {})
-        ):
-            new_base = data_out["extras"]["base_url"]
-            self._logger.warning("Invalid deposit site, redirecting to %s", new_base)
-            if not self._config.redirect:
-                raise ApiError(f"Invalid deposit site; correct site is {new_base}", 400)
-            self._base_url = f"{new_base}/api/{self._ver}/"
+        if isinstance(data_out, dict) and self._handle_redirect(data_out):
             full_url = self._base_url + endpoint
             try:
                 response = self._session.request(
@@ -117,6 +185,10 @@ class HttpApiClient:
             except requests.exceptions.RequestException as e:
                 raise ApiError("Retry after redirect failed", 503) from e
             data_out = self._check_response(response)
+            if isinstance(data_out, dict):
+                retry_site_base_url = self._redirect_site_base_url(data_out)
+                if retry_site_base_url is not None:
+                    raise ApiError("Redirect retry returned another invalid_location", 502)
 
         return data_out
 
@@ -240,21 +312,19 @@ class HttpApiClient:
 
                 data_out = self._check_response(response)
 
-                if (
-                    isinstance(data_out, dict)
-                    and data_out.get("code") == "invalid_location"
-                    and "base_url" in data_out.get("extras", {})
-                ):
-                    new_base = data_out["extras"]["base_url"]
-                    self._logger.warning("Invalid deposit site, redirecting to %s", new_base)
-                    if not self._config.redirect:
-                        raise ApiError(f"Invalid deposit site; correct site is {new_base}", 400)
-                    self._base_url = f"{new_base}/api/{self._ver}/"
+                if isinstance(data_out, dict) and self._handle_redirect(data_out):
                     fp.seek(chunk_start)
                     continue
 
                 last_data = data_out
-                uploaded_bytes = data_out.get("uploadedBytes", chunk_end + 1)
+                next_uploaded_bytes = data_out.get("uploadedBytes", chunk_end + 1)
+                if not isinstance(next_uploaded_bytes, int) or isinstance(next_uploaded_bytes, bool):
+                    raise ApiError("Invalid uploadedBytes in response", 502)
+                if not chunk_start < next_uploaded_bytes <= file_size:
+                    raise ApiError("Invalid uploadedBytes in response", 502)
+                uploaded_bytes = next_uploaded_bytes
+                if uploaded_bytes < file_size:
+                    fp.seek(uploaded_bytes)
 
         self._logger.info("Uploaded %d/%d bytes", uploaded_bytes, file_size)
 
