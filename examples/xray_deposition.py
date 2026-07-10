@@ -17,11 +17,11 @@ import logging
 import os
 import time
 
-import onedep_lib as dsp
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+import onedep_lib as dsp
 from onedep_lib.config import DepositConfig
 
 logging.disable(logging.ERROR)

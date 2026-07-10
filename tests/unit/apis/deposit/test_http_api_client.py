@@ -1,13 +1,13 @@
 import json
 
 import pytest
-from werkzeug.wrappers import Response
 from pytest_httpserver import HTTPServer
+from werkzeug.wrappers import Response
+
 from onedep_lib.apis.deposit.client import HttpApiClient
-from onedep_lib.apis.deposit.models import WwPDBDeposition, DepositedFile, DepositStatus
+from onedep_lib.apis.deposit.models import DepositedFile, DepositStatus, Experiment, WwPDBDeposition
 from onedep_lib.config import DepositConfig
 from onedep_lib.enums import Country, ExperimentType, FileType
-from onedep_lib.apis.deposit.models import Experiment
 from onedep_lib.exceptions import ApiError
 
 

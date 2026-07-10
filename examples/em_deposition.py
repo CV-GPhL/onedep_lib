@@ -14,14 +14,14 @@ Follows the sequence diagram in docs/deposit.mermaid:
 from __future__ import annotations
 
 import logging
-import time
 import os
+import time
 
-import onedep_lib as dsp
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+import onedep_lib as dsp
 from onedep_lib.config import DepositConfig
 
 logging.disable(logging.ERROR)
@@ -32,7 +32,9 @@ _console = Console(stderr=True)
 # Change all values marked with  <<<< CHANGE THIS  before running.
 
 EMAIL = os.getenv("WWPDB_EMAIL") or "your.email@example.com"  # <<<< CHANGE THIS
-USERS = os.getenv("WWPDB_USERS") and os.getenv("WWPDB_USERS").split(",") or ["0000-0000-0000-0000"]  # <<<< CHANGE THIS  (ORCID iD)
+USERS = (
+    os.getenv("WWPDB_USERS") and os.getenv("WWPDB_USERS").split(",") or ["0000-0000-0000-0000"]
+)  # <<<< CHANGE THIS  (ORCID iD)
 
 BASE = os.getenv("WWPDB_EM_BASE") or "/path/to/your/em/files"  # <<<< CHANGE THIS  (directory containing your EM files)
 

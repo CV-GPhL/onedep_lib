@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 
 from onedep_lib.checks.runner import CheckRunner
+from onedep_lib.config import DepositConfig
 from onedep_lib.enums import Country, ExperimentType, FileType
 from onedep_lib.schemas.remote import RemoteSchemaProvider
 from onedep_lib.session.json_store import JsonSessionStore
 from onedep_lib.session.models import LocalFile, LocalSession
-from onedep_lib.config import DepositConfig
 
 
 @pytest.fixture

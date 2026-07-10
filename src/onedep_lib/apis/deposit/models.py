@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import ClassVar, Union
+from typing import ClassVar
 
 from onedep_lib.apis.deposit.enums import Status
 from onedep_lib.enums import EMSubType, ExperimentType, FileType

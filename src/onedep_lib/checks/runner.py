@@ -41,7 +41,13 @@ class CheckRunner:
         try:
             schema = self._schema_provider.get_schema("required_files")
             resources = [
-                (f"{name}.json", Resource(contents=self._schema_provider.get_schema(name), specification=CheckRunner.referencing_specification))
+                (
+                    f"{name}.json",
+                    Resource(
+                        contents=self._schema_provider.get_schema(name),
+                        specification=CheckRunner.referencing_specification,
+                    ),
+                )
                 for name in CheckRunner.subschemas
             ]
         except SchemaError as exc:

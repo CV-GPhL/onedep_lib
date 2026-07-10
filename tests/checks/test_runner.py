@@ -1,14 +1,13 @@
 import json
-from pathlib import Path
 
 import pytest
 
 from onedep_lib.checks.report import CheckSeverity
 from onedep_lib.checks.runner import CheckRunner
+from onedep_lib.config import DepositConfig
 from onedep_lib.enums import EMSubType, ExperimentType, FileType
 from onedep_lib.exceptions import SchemaError
 from onedep_lib.session.models import LocalFile
-from onedep_lib.config import DepositConfig
 
 
 class StubSchemaProvider:
