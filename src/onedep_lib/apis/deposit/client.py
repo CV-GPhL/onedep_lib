@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
-from urllib.parse import urlsplit, urlunsplit
 from json import JSONDecodeError
 from typing import Union
+from urllib.parse import urlsplit, urlunsplit
 
-import hashlib
 import requests
 import urllib3
 
@@ -22,7 +22,6 @@ from onedep_lib.auths.types import AuthProvider
 from onedep_lib.config import DepositConfig
 from onedep_lib.enums import Country, FileType
 from onedep_lib.exceptions import ApiError
-
 
 _API_SUFFIX_RE = re.compile(r"/api/v[0-9]+/?$")
 

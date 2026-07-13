@@ -1,8 +1,9 @@
+
 import pytest
-from pathlib import Path
-from onedep_lib.checks.report import CheckReport
+
 from onedep_lib import dsp
 from onedep_lib.apis.deposit.models import WwPDBDeposition
+from onedep_lib.checks.report import CheckReport
 from onedep_lib.config import DepositConfig
 from onedep_lib.dsp import deposit_init, deposit_resume
 from onedep_lib.enums import Country, ExperimentType, FileType
@@ -36,7 +37,6 @@ def stub_api():
 @pytest.fixture
 def dep(tmp_path, stub_api):
     return deposit_init(
-        config=DepositConfig(),
         email="test@example.com",
         users=["0000-0001-2345-6789"],
         country=Country.USA,
@@ -217,7 +217,6 @@ def test_get_status_before_deposit_raises(dep):
 
 def test_deposit_without_experiment_type_raises(tmp_path):
     dep = deposit_init(
-        config=DepositConfig(),
         email="test@example.com",
         users=[],
         country=Country.USA,
@@ -276,7 +275,6 @@ def test_deposit_resume_restores_session(dep, tmp_path, stub_api):
 
 def test_context_manager(tmp_path, stub_api):
     with deposit_init(
-        config=DepositConfig(),
         email="test@example.com",
         users=[],
         country=Country.USA,

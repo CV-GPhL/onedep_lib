@@ -37,7 +37,13 @@ def validator(schema: dict) -> jsonschema.Draft202012Validator:
     from onedep_lib.checks.runner import CheckRunner
     schema_dir = DepositConfig().local_schema_cache_dir
     resources = [
-        (f"{name}.json", Resource(contents=json.loads((schema_dir / f"{name}.json").read_text()), specification=DRAFT202012))
+        (
+            f"{name}.json",
+            Resource(
+                contents=json.loads((schema_dir / f"{name}.json").read_text()),
+                specification=DRAFT202012,
+            ),
+        )
         for name in CheckRunner.subschemas
     ]
     registry = Registry().with_resources(resources)
