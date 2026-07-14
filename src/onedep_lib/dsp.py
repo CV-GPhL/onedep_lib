@@ -23,9 +23,6 @@ from onedep_lib.session.types import SessionStore
 from onedep_lib.auths.token import TokenStore
 from onedep_lib.exceptions import OneDepError
 
-import logging
-logging.basicConfig(level=logging.INFO)
-
 
 def _md5_of_file(path: Path, chunk_size: int = 1 << 20) -> str:
     h = hashlib.md5()
